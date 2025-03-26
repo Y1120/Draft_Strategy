@@ -39,7 +39,7 @@ def calculate_beta(merged_data):
     adf_statistic = adf_result[0]
     p_value = adf_result[1]
     critical_values = adf_result[4]
-    if p_value < 0.1:
+    if p_value < 0.2:
         is_cointegration = True
     # Print results
     print("ADF Statistic:", adf_statistic)
@@ -65,8 +65,7 @@ def calculate_beta_with_rolling_windows(merged_data):
 
         start_time = merged_data['timestamp'].iloc[0] + window_size
         end_time = merged_data['timestamp'].iloc[0] + pd.Timedelta(days=60)
-        print("start",start_time)
-        print("end",end_time)
+
         times = []
         # Loop through the merged_data with a rolling window
         for end in merged_data['timestamp']:
@@ -76,7 +75,7 @@ def calculate_beta_with_rolling_windows(merged_data):
             times.append(end)
             # Select the windowed data
             window_data = merged_data[(merged_data['timestamp'] >= start) & (merged_data['timestamp'] <= end)]
-            print("windows_data",window_data)
+
             
             if len(window_data) < 2:  # Need at least two observations to calculate beta
                 continue  # Skip if we don't have enough data
@@ -103,19 +102,17 @@ def calculate_beta_with_rolling_windows(merged_data):
             # Append the spread for the last observation
             merged_data.loc[merged_data['timestamp'] == end, 'spread'] = spread
             merged_data.loc[merged_data['timestamp'] == end, 'beta'] = beta
-            print(f"beta at {end}",beta)
             rolling_betas.append(beta)
 
         # Perform ADF test on calculated spreads
         cointegration_test_data = merged_data[(merged_data['timestamp'] > start_time) & (merged_data['timestamp'] < end_time)]
-        print("cointegration",cointegration_test_data.head())
         adf_result = adfuller(cointegration_test_data['spread'].dropna())
         
         # Extract ADF results
         adf_statistic = adf_result[0]
         p_value = adf_result[1]
         critical_values = adf_result[4]
-        if p_value < 0.1:
+        if p_value < 1:
             is_cointegration = True
         # Print ADF results
         print("ADF Statistic:", adf_statistic)
@@ -179,13 +176,13 @@ def calculate_bound(merged_data,current_timestamp,lookback_days):
                       (merged_data['timestamp'] < current_timestamp)]
     # Ensure we have enough data to calculate meaningful bounds
     if len(merged_data_copy) < 5:  # Arbitrary threshold to ensure enough data
-        return None, None
+        return None, None, None
     ratio =merged_data_copy['spread']
     ratio = ratio.dropna()
     # Align timestamps and calculate ratio
 
     if len(ratio) < 5:  # Another check after alignment
-        return None, None
+        return None, None, None
 
     # Calculate bounds
     mean = ratio.mean()
@@ -195,3 +192,76 @@ def calculate_bound(merged_data,current_timestamp,lookback_days):
 
     return upper_bound, lower_bound, mean
 
+def calculate_beta_with_rolling_windows1111(merged_data):
+    try:
+        is_cointegration = False
+        # Create lists to store results
+        rolling_betas = []
+        
+        # Define timedelta for the rolling window
+        window_size = pd.Timedelta(days=30)
+        print(merged_data['timestamp'].iloc[0])
+
+        start_time = merged_data['timestamp'].iloc[0] + window_size
+        end_time = merged_data['timestamp'].iloc[0] + pd.Timedelta(days=60)
+
+        times = []
+        # Loop through the merged_data with a rolling window
+        for end in merged_data['timestamp']:
+            if end < start_time:
+                continue
+            start = end - window_size
+            times.append(end)
+            # Select the windowed data
+            window_data = merged_data[(merged_data['timestamp'] >= start) & (merged_data['timestamp'] <= end)]
+
+            
+            if len(window_data) < 2:  # Need at least two observations to calculate beta
+                continue  # Skip if we don't have enough data
+
+            data_X = window_data['ai16z']
+            data_y = window_data['virtual']
+            
+            # Log-transform data
+            X = sm.add_constant(data_X)
+            y = data_y
+
+            # Fit OLS model
+            model = sm.OLS(y, X).fit()
+            
+            # Fit GLS model without custom covariance
+            gls_model = sm.GLS(y, X).fit()  # No sigma parameter
+            beta = gls_model.params['ai16z']  # Get the beta for ai16z
+
+            # Calculate spread for the last observation in the current window
+            last_X = data_X.iloc[-1]  # Log of the last X value
+            last_y = data_y.iloc[-1]  # Log of the last y value
+            spread = last_y - (last_X * beta) - model.params['const']
+
+            # Append the spread for the last observation
+            merged_data.loc[merged_data['timestamp'] == end, 'spread'] = spread
+            merged_data.loc[merged_data['timestamp'] == end, 'beta'] = beta
+            rolling_betas.append(beta)
+
+        # Perform ADF test on calculated spreads
+        cointegration_test_data = merged_data[(merged_data['timestamp'] > start_time) & (merged_data['timestamp'] < end_time)]
+        adf_result = adfuller(cointegration_test_data['spread'].dropna())
+        
+        # Extract ADF results
+        adf_statistic = adf_result[0]
+        p_value = adf_result[1]
+        critical_values = adf_result[4]
+        if p_value < 1:
+            is_cointegration = True
+        # Print ADF results
+        print("ADF Statistic:", adf_statistic)
+        print("p-value:", p_value)
+        for key, value in critical_values.items():
+            print(f"   {key}: {value}")
+        return merged_data,is_cointegration,p_value
+    except:
+        print("error getting cointegration")
+        traceback.print_exc()
+        is_cointegration = False
+        p_value = 999
+        return merged_data,is_cointegration,p_value

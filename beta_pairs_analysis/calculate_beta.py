@@ -254,7 +254,7 @@ def calculate_beta_with_rolling_windows(merged_data):
         # Append the spread for the last observation
         merged_data.loc[merged_data['timestamp'] == end, 'spread'] = spread
         merged_data.loc[merged_data['timestamp'] == end, 'beta'] = beta
-        print(f"beta at {end}",beta)
+
         rolling_betas.append(beta)
 
     # Perform ADF test on calculated spreads

@@ -15,6 +15,7 @@ def generate_merge_data(symbol_x,symbol_y):
     merage_data = pd.merge(data_ai_subset, data_vr_subset, on='timestamp', how='inner')
     merage_data = merage_data.dropna()
     merage_data = calculate_beta_with_rolling_windows(merage_data)
+    print(type(merage_data))
     merage_data = pd.DataFrame(merage_data)
     merage_data.to_csv(f'C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\1m\\{symbol_x}-{symbol_y}-merge.csv')
 import os

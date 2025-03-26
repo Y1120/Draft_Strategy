@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
 import os
-from calculate_beta import calculate_beta_with_rolling_windows,calculate_bound
+from calculate_beta import calculate_beta_with_rolling_windows1111,calculate_bound
 import traceback
 from coins_data_collection import get_all_symbols
 """
@@ -170,7 +170,7 @@ def exit_position(spread,beta, ai_position, virtual_position, PNL, upper_bound, 
             ai_entry_price = data_ai.loc[data_ai['timestamp'] == entry_time, 'close'].iloc[0]
             vr_entry_price = data_vr.loc[data_vr['timestamp'] == entry_time, 'close'].iloc[0]
             amount1 = 100/ai_entry_price
-            amount2 =  abs(beta * amount1 * ai_entry_price / vr_entry_price)
+            amount2 =  beta * amount1 * ai_entry_price / vr_entry_price
             # Calculate PNL (long AI, short VR)
             ai_pnl = amount1 * (ai_current_price - ai_entry_price)
             vr_pnl = amount2 * (vr_entry_price - vr_current_price)  # Note: short position
@@ -190,7 +190,7 @@ def exit_position(spread,beta, ai_position, virtual_position, PNL, upper_bound, 
             ai_entry_price = data_ai.loc[data_ai['timestamp'] == entry_time, 'close'].iloc[0]
             vr_entry_price = data_vr.loc[data_vr['timestamp'] == entry_time, 'close'].iloc[0]
             amount1 = 100/ai_entry_price
-            amount2 =  abs(beta * amount1 * ai_entry_price) / vr_entry_price
+            amount2 =  beta * amount1 * ai_entry_price / vr_entry_price
             # Calculate PNL (long AI, short VR)
             ai_pnl = amount1 * (ai_current_price - ai_entry_price)
             vr_pnl = amount2 * (vr_entry_price - vr_current_price)  # Note: short position
@@ -215,7 +215,7 @@ def exit_position(spread,beta, ai_position, virtual_position, PNL, upper_bound, 
             ai_entry_price = data_ai.loc[data_ai['timestamp'] == entry_time, 'close'].iloc[0]
             vr_entry_price = data_vr.loc[data_vr['timestamp'] == entry_time, 'close'].iloc[0]
             amount1 = 100/ai_entry_price
-            amount2 =  abs(beta * amount1 * ai_entry_price / vr_entry_price)
+            amount2 =  beta * amount1 * ai_entry_price / vr_entry_price
 
             # Calculate PNL (short AI, long VR)
             ai_pnl = amount1 * (ai_entry_price - ai_current_price)  # Note: short position
@@ -235,7 +235,7 @@ def exit_position(spread,beta, ai_position, virtual_position, PNL, upper_bound, 
             ai_entry_price = data_ai.loc[data_ai['timestamp'] == entry_time, 'close'].iloc[0]
             vr_entry_price = data_vr.loc[data_vr['timestamp'] == entry_time, 'close'].iloc[0]
             amount1 = 100/ai_entry_price
-            amount2 =  abs(beta * amount1 * ai_entry_price / vr_entry_price)
+            amount2 =  beta * amount1 * ai_entry_price / vr_entry_price
             # Calculate PNL (short AI, long VR)
             ai_pnl = amount1 * (ai_entry_price - ai_current_price)  # Note: short position
             vr_pnl = amount2 * (vr_current_price - vr_entry_price)
@@ -277,6 +277,7 @@ def backtest1(symbol1,symbol2):
     if is_corr:
         #### merge data ####
         bool_check = check_generated_data(symbol1,symbol2)
+        bool_check = False
         if bool_check:
             p_value = 999
             return True,correlation,p_value
@@ -289,7 +290,7 @@ def backtest1(symbol1,symbol2):
             merage_data = merage_data.dropna()
             merage_data.columns = ['timestamp', 'ai16z', 'virtual']
             print("merage_data",merage_data)
-            merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows(merage_data)
+            merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows1111(merage_data)
             
             if is_cointegration:
 
@@ -333,7 +334,7 @@ def backtest1(symbol1,symbol2):
                 warmup_end = data_ai_test['timestamp'].iloc[0] + pd.Timedelta(days=warmup_period)
                 # Skip warmup period for trading but use it for initial bounds
                 start_idx = data_ai_test[data_ai_test['timestamp'] > warmup_end].index[0]
-                merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows(merage_data)
+                merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows1111(merage_data)
                 print(merage_data)
                 print('type',type(merage_data))
                 # Run the backtest
@@ -435,7 +436,7 @@ def backtest1(symbol1,symbol2):
                 
                 
                 results = pd.DataFrame(results)
-                results.to_csv(f"C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\results_csv\\{symbol1} && {symbol2}.csv")
+                results.to_csv(f"C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\results_csv\\{symbol1} & {symbol2}.csv")
                 print(f"Final PNL: {PNL:.2f}")
                 return True,correlation,p_value
             else:
@@ -477,7 +478,7 @@ def backtest2(symbol1,symbol2):
         merage_data = merage_data.dropna()
         merage_data.columns = ['timestamp', 'ai16z', 'virtual']
         print("merage_data",merage_data)
-        merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows(merage_data)
+        merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows1111(merage_data)
         
         if is_cointegration:
 
@@ -521,9 +522,9 @@ def backtest2(symbol1,symbol2):
             warmup_end = data_ai_test['timestamp'].iloc[0] + pd.Timedelta(days=warmup_period)
             # Skip warmup period for trading but use it for initial bounds
             start_idx = data_ai_test[data_ai_test['timestamp'] > warmup_end].index[0]
-            merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows(merage_data)
+            merage_data,is_cointegration,p_value = calculate_beta_with_rolling_windows1111(merage_data)
+            print("merage_data")
             print(merage_data)
-            print('type',type(merage_data))
             # Run the backtest
             ai_close = []
             vr_close = []
@@ -623,7 +624,7 @@ def backtest2(symbol1,symbol2):
             
             
             results = pd.DataFrame(results)
-            results.to_csv(f"C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\results_csv\\{symbol1} & {symbol2}.csv")
+            results.to_csv(f"C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\results_csv\\{symbol1} &&&& {symbol2}.csv")
             print(f"Final PNL: {PNL:.2f}")
             return True,correlation,p_value
         else:
@@ -683,7 +684,7 @@ def plot_trading_results(timestamps, pnl, ai_pos, vr_pos, ratio, upper_bounds, l
     for ax in [ax1, ax2, ax3]:
         ax.tick_params(axis='x', rotation=45)
     folder_path = "C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\results_plot\\"
-    file_path = os.path.join(folder_path, f'{symbol1} & {symbol2}.png')
+    file_path = os.path.join(folder_path, f'{symbol1} &&&& {symbol2}.png')
 
         # 检查文件夹是否存在，如果不存在则创建
     if not os.path.exists(folder_path):
@@ -710,49 +711,23 @@ def main():
     drop_coins = []
     normal_coins = []
     try:
-        symbols = get_all_symbols()
+
         symbols = {
             'ETHFI-USDT-SWAP': '1734686100190',
              'ETH-USDT-SWAP': '1733911200140'
         }
+   
+        symbol1 = 'ETH-USDT-SWAP'
+        symbol2 =  'ETHFI-USDT-SWAP'
         time = '2025-01-01'
         time1 = '2025-02-28'
-        limited_symbols = dict(list(symbols.items()))
         time1 = pd.to_datetime(time1)
 
-        for symbol, listTime in limited_symbols.items():
-            listTime_dt = pd.to_datetime(listTime, unit='ms')
-            if listTime_dt > time1:
-                del symbols[symbol]  
-        analyzed_pairs = set() 
-        all_pairs = set()
-        #for symbol1 in normal_coins:
-        #    for symbol2 in normal_coins():s
-        for symbol1 in limited_symbols:
-            for symbol2 in limited_symbols: 
-                print("sym1",symbol1)
-                if (symbol1,symbol2) in all_pairs:
-                    continue
-                if symbol1 >= symbol2 or (symbol1, symbol2) in analyzed_pairs:  
-                    continue
-                
-                print(f'\nAnalyzing {symbol1} vs {symbol2}...')
-                all_pairs.add((symbol1,symbol2))
-                is_pair,corr,p_value = backtest1(symbol1, symbol2)
 
-                if is_pair is True and p_value != 999:
-                    analyzed_pairs.add((symbol1, symbol2)) 
-                    print(f"\nTesting pair: {symbol1} - {symbol2}")
-                    
-                    result2 = {
-                        "symbol1": symbol1,
-                        "symbol2": symbol2,
-                        "correlation": corr,
-                        "p_value": p_value,
-                    }
-                    results_sum.append(result2)
-        results_sum = pd.DataFrame(results_sum)
-        results_sum.to_csv(r"C:\Users\theo\Desktop\Astra-folder\pairs_data_symbols\pairs_results\pairs.csv")
+        print("sym1",symbol1)
+
+        is_pair,corr,p_value = backtest1(symbol1, symbol2)
+
        
     except Exception as e:
         print(f"Error during backtest: {str(e)}")

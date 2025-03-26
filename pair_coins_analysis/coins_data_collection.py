@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import time
 import traceback
 import math
+import pprint
 # get all symbols with perp
 def extract_inst_ids(data):
     inst_ids = [item['instId'] for item in data]
@@ -12,6 +13,23 @@ def extract_inst_ids(data):
     list_time = [item['listTime'] for item in data]
     dic = dict(zip(inst_ids,list_time))
     return dic
+
+def get_contract_size(symbol):
+    try:
+        futures_response = requests.get(
+            'https://www.okx.com/api/v5/public/instruments',
+            params={'instType': 'SWAP'}
+        )
+        futures_data = futures_response.json()
+        contract_size = [
+            item['ctVal']
+            for item in futures_data['data'] if item['instId'] == symbol
+        ]
+        print(int(contract_size[0]))
+            
+    except Exception as e:
+        print(f"Error getting symbols: {e}")
+        return None
 
 def get_all_symbols():
     try:
@@ -21,7 +39,11 @@ def get_all_symbols():
             params={'instType': 'SWAP'}
         )
         futures_data = futures_response.json()
-        
+        filtered_items = [
+            item
+            for item in futures_data['data'] if 'CFX-USDT-SWAP' in item['instId']
+        ]
+        print(filtered_items)
         if futures_data and futures_data.get('code') == '0' and 'data' in futures_data:
             symbols_dict = {
                 item['instId']: item['listTime'] 
@@ -110,13 +132,6 @@ def check_generate_data(symbol):
     else:
         return False
 if __name__ == '__main__':
-    dic   =  get_all_symbols()
-    print(len(dic))
-    for symbol,listTime in dic.items():
-        print(symbol,listTime)
-        bool_check = check_generate_data(symbol)
-        if bool_check == False:
-            get_symbols_data(symbol,listTime, '30m')
-        else:
-            print("Data already exists")
+    get_contract_size('CFX-USDT-SWAP')
+    get_contract_size('DOGE-USDT-SWAP')
 

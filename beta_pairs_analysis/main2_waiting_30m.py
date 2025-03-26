@@ -64,7 +64,6 @@ async def fetch_historical_data(exchange, symbol_x):
             try:
                 candles = await exchange.fetch_ohlcv(symbol_x, '1m', since, 100)
                 if not candles:
-                    print("No more data to fetch")
                     break
                 print(candles)
                 data_list_x.extend(candles)
@@ -74,8 +73,7 @@ async def fetch_historical_data(exchange, symbol_x):
                 print(f"Error fetching data: {e}")
                 break
 
-        if not data_list_x:
-            print("No symbol1 data fetched")
+
 
         df_x = pd.DataFrame(data_list_x, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df_x['timestamp'] = pd.to_datetime(df_x['timestamp'], unit='ms')
@@ -120,7 +118,7 @@ async def retry_async(func, *args, max_retries=3, initial_delay=1, **kwargs):
     
     # If we get here, all retries failed
     raise last_exception
-# 
+
 async def fetch_merge_data(exchange,symbol_x,symbol_y):
     merge_file_path = f'C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\1m\\{symbol_x}-{symbol_y}-merge.csv'
     if not os.path.exists(merge_file_path):
@@ -148,7 +146,6 @@ async def fetch_merge_data(exchange,symbol_x,symbol_y):
         elif end>start_dt:
             
             start_index = end - timedelta(days= 30)
-            print(start_index,'start_index')
             windows_x = data_x[(data_x['timestamp'] >= start_index) & (data_x['timestamp'] <= end)]
             windows_y = data_y[(data_y["timestamp"] >= start_index) & (data_y["timestamp"] <= end)]
             windows_x_close = pd.to_numeric(windows_x['close'], errors='coerce').to_numpy()
@@ -185,7 +182,6 @@ async def fetch_merge_data(exchange,symbol_x,symbol_y):
                 "beta":current_beta
             }
            
-            
             result_all.append(results)
     result_all = pd.DataFrame(result_all)
     result_all.to_csv(f'C:\\Users\\theo\\Desktop\\Astra-folder\\pairs_data_symbols\\1m\\{symbol_x}-{symbol_y}-merge.csv', mode = 'a',header = False,index = False)
@@ -397,7 +393,6 @@ class Pairs_trade:
         elif self.position_x == 1 and self.position_y == -1:
 
             if self.current_spread < self.lower_bound:
-                print(f"spread: {self.current_spread};lower_bound:{self.lower_bound};")
                 print(f"sell {self.symbol_x} buy {self.symbol_y} , close_position!")
                 # Signal reversed - close position and open opposite
                 self.is_execute = True
@@ -456,7 +451,6 @@ class Pairs_trade:
             elif self.current_spread < self.mean:
                 # Ratio back to normal - close position
                 self.is_execute = True
-                print(f"spread: {self.current_spread};mean:{self.mean};")
                 print(f"sell {self.symbol_x} buy {self.symbol_y} , close_position!")
                 # close position
                 #order_x = await self.exchange.create_order(self.symbol_x, 'market', 'sell', self.entry_amount_x)
@@ -491,7 +485,6 @@ class Pairs_trade:
         elif self.position_x == -1 and self.position_y == 1:
             if self.current_spread > self.upper_bound:
                 # Signal reversed - close position and open opposite
-                print(f"spread: {self.current_spread};upper_bound:{self.upper_bound};")
                 print(f"buy {self.symbol_x} sell {self.symbol_y} , close_position!")
                 self.is_execute = True
 
@@ -546,7 +539,6 @@ class Pairs_trade:
 
             elif self.current_spread > self.mean:
                 # Ratio back to normal - close position
-                print(f"spread: {self.current_spread};mean:{self.mean};")
                 self.is_execute = True
                 # close position
                 #order_x = await self.exchange.create_order(self.symbol_x, 'market', 'buy', self.entry_amount_x)
@@ -579,15 +571,23 @@ class Pairs_trade:
 async def process_pair(exchange, symbol_x, symbol_y):
     pairs_trade = Pairs_trade(exchange=exchange, symbol_x=symbol_x, symbol_y=symbol_y)
     beta = []
+    count_time = 0
+    
     while True:
-        print('symbol_x',symbol_x)
-        print('symbol_y',symbol_y)
+        now = datetime.datetime.now()
+        print(f"**************************** Details for {symbol_x} - {symbol_y} at {now} ***************************")
+        
+        print("count_time",count_time)
+        count_time += 1
         await fetch_historical_data(exchange, symbol_x)
         await fetch_historical_data(exchange, symbol_y)
-        await fetch_merge_data(exchange,symbol_x, symbol_y)
+        if count_time == 30:
+            await fetch_merge_data(exchange,symbol_x, symbol_y)
+            count_time = 0
+
         await pairs_trade.get_data()
         await pairs_trade.calculate_spread()
-    
+        
         await pairs_trade.exit_position()
         print("PNL", pairs_trade.PNL)
         print("orders", pairs_trade.orders)
@@ -598,11 +598,11 @@ async def process_pair(exchange, symbol_x, symbol_y):
         print("entry_price_y", pairs_trade.entry_price_y)
         print("entry_current_time", pairs_trade.entry_time)
         await asyncio.sleep(calculate_waiting_time())
+        print(f"**************************** Details for {symbol_x} - {symbol_y} at {now}  ***************************")
 
 async def main():
    
-    pairs = [["1INCH-USDT-SWAP", "AR-USDT-SWAP"], ["ACE-USDT-SWAP", "CFX-USDT-SWAP"],["AI16Z-USDT-SWAP", "VIRTUAL-USDT-SWAP"]]
-    #generate_merge_data("AI16Z-USDT-SWAP","VIRTUAL-USDT-SWAP")
+    pairs = [["DOGE-USDT-SWAP", "FOXY-USDT-SWAP"], ["AEVO-USDT-SWAP", "AIXBT-USDT-SWAP"]]
 
     exchange = ccxt.okx({
         "apiKey": os.getenv("OKX_KEY"),
@@ -615,7 +615,6 @@ async def main():
         await exchange.set_leverage(symbol=symbol_x, leverage=10)
         await exchange.set_leverage(symbol=symbol_y, leverage=10)
         tasks.append(process_pair(exchange, symbol_x, symbol_y))
-
 
     await asyncio.gather(*tasks)
     await exchange.close()
