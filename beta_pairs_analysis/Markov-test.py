@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from statsmodels.tsa.stattools import adfuller
 import traceback
 def calculate_beta_with_rolling_windows(merged_data):
+    
     # Create lists to store results
     rolling_betas = []
     
@@ -73,7 +74,6 @@ def calculate_beta_with_rolling_windows(merged_data):
 import os
 def generate_merge_data(symbol_x,symbol_y):
     path = os.getcwd()
-    print("path",path)
     file_path1 = path + f'/data/30m/{symbol_x}_30m.csv'
     file_path2 = path + f'/data/30m/{symbol_y}_30m.csv'
     data_x = pd.read_csv(file_path1)
@@ -82,8 +82,7 @@ def generate_merge_data(symbol_x,symbol_y):
     data_y['timestamp'] = pd.to_datetime(data_y['timestamp'], errors='coerce')
     data_x = data_x.dropna(subset=['timestamp'])
     data_y = data_y.dropna(subset=['timestamp'])
-    print("data_x",data_x.head())
-    print("data_y",data_y.head())
+
     data_ai_subset = data_x[['timestamp', 'close']].rename(columns={'close': 'symbol1'})
     data_vr_subset = data_y[['timestamp', 'close']].rename(columns={'close': 'symbol2'})
     merage_data = pd.merge(data_ai_subset, data_vr_subset, on='timestamp', how='inner')
@@ -95,56 +94,47 @@ def generate_merge_data(symbol_x,symbol_y):
     return merage_data
 
 def higher_lower_mean(merge_data):
+    # calculate rolling higher_lower_mean
     max_spread = merge_data['spread'].max()
     min_spread = merge_data['spread'].min()
     max_range = max_spread-(max_spread-min_spread)/2
-    print("max_range",max_range)
     min_range = min_spread+(max_spread-min_spread)/2
-    merge_data['state'] = np.where(
-        (merge_data['spread'] > max_range) & (merge_data['spread'] <= max_spread),
-        2, 1)
-    state_2_rows = merge_data.loc[merge_data['state'] == 2]
-    # Print the rows
-    print("Rows where state == 2:")
-    print(state_2_rows)
+    merge_data.loc[:, 'state'] = np.where(
+    (merge_data['spread'] > max_range) & (merge_data['spread'] <= max_spread),
+    2, 1)
+    
     lower_mean = merge_data.loc[merge_data['state'] == 1, 'spread'].mean()
     higher_mean = merge_data.loc[merge_data['state'] == 2, 'spread'].mean()
     lower_std = merge_data.loc[merge_data['state'] == 1, 'spread'].std()
     higher_std = merge_data.loc[merge_data['state'] == 2, 'spread'].std()
-    print("lower_mean",lower_mean)
-    print("higher_mean",higher_mean)
-    print("low_std",lower_std)
-    print("high_std",higher_std)
+
     
     return lower_mean, higher_mean,lower_std,higher_std
 
-def generate_trading_signal_dynamic(X, lower_mean, higher_mean, lower_std, higher_std, rho):
+def generate_trading_signal_dynamic(X, rho):
+    print("X_first", X['timestamp'])
+    print("Before loop, X['timestamp'] has NaT:", X['timestamp'].isna().sum())
+
+    # Reset index to ensure alignment
+    X = X.reset_index(drop=True)
+
     # Initialize positions and signals
     X['position_x'] = 0
     X['position_y'] = 0
     X['signal'] = 0  # Initialize trading signal
 
-    # Define bounds for each state
-    upper_bound_1 = lower_mean + 0.75 * lower_std
-    lower_bound_1 = lower_mean - 0.75 * lower_std
-    upper_bound_2 = higher_mean + 0.75 * higher_std
-    lower_bound_2 = higher_mean - 0.75 * higher_std
-
     # Initialize transition counts matrix
     transition_counts = np.zeros((2, 2))
-    recent_transitions = []
     rolling_window_size = 100
-
-    transition_counts = np.zeros((2, 2))
+    recent_transitions = []
 
     for i in range(len(X)):
         if i > 0:  # Avoid index error
-            previous_state = X['state'].iloc[i - 1]
-            current_state = X['state'].iloc[i]
+            previous_state = int(X['state'].iloc[i - 1])
+            current_state = int(X['state'].iloc[i])
 
             # Add the transition to the recent transitions list
             recent_transitions.append((previous_state, current_state))
-            print("Recent Transitions:", recent_transitions)
 
             # Keep only the last `rolling_window_size` transitions
             if len(recent_transitions) > rolling_window_size:
@@ -153,9 +143,8 @@ def generate_trading_signal_dynamic(X, lower_mean, higher_mean, lower_std, highe
             # Reset transition counts for the rolling window
             transition_counts = np.zeros((2, 2))
             for prev, curr in recent_transitions:
-                transition_counts[prev - 1, curr - 1] += 1  # Adjust indices to be zero-based
-
-            print("Transition Counts Matrix:\n", transition_counts)
+                if prev in [1, 2] and curr in [1, 2]:  # Ensure valid indices
+                    transition_counts[prev - 1, curr - 1] += 1  # Adjust indices to be zero-based
 
             # Calculate p and q dynamically
             if transition_counts[0].sum() > 0:
@@ -167,52 +156,53 @@ def generate_trading_signal_dynamic(X, lower_mean, higher_mean, lower_std, highe
                 q = transition_counts[1, 0] / transition_counts[1].sum()
             else:
                 q = 0
+
             # Generate trading signals
-            if X['state'].iloc[i] == 1:
-                if p > rho:
-                    print("state",X['state'].iloc[i])
-                    if X['spread'].iloc[i] < lower_bound_1:
-                        X.loc[i, 'position_x'] = -1  # Sell asset X
-                        X.loc[i, 'position_y'] = 1   # Buy asset Y
-                    elif X['spread'].iloc[i] > upper_bound_1:
-                        X.loc[i, 'position_x'] = 1   # Buy asset X
-                        X.loc[i, 'position_y'] = -1  # Sell asset Y
-                    else:
-                        X.loc[i, 'position_x'] = 0
-                        X.loc[i, 'position_y'] = 0
+            upper_bound_1 = X['lower_mean'].iloc[i] + 0.75 * X['lower_std'].iloc[i]
+            lower_bound_1 = X['lower_mean'].iloc[i] - 0.75 * X['lower_std'].iloc[i]
+            upper_bound_2 = X['higher_mean'].iloc[i] + 0.75 * X['higher_std'].iloc[i]
+            lower_bound_2 = X['higher_mean'].iloc[i] - 0.75 * X['higher_std'].iloc[i]
+
+            if int(X['state'].iloc[i]) == 1:
+                if X['spread'].iloc[i] < lower_bound_1:
+                    X.loc[i, 'position_x'] = -1  # Sell asset X
+                    X.loc[i, 'position_y'] = 1   # Buy asset Y
+                elif X['spread'].iloc[i] > upper_bound_1 and p > rho:
+                    X.loc[i, 'position_x'] = 1   # Buy asset X
+                    X.loc[i, 'position_y'] = -1  # Sell asset Y
                 else:
                     X.loc[i, 'position_x'] = 0
                     X.loc[i, 'position_y'] = 0
-            elif X['state'].iloc[i] == 2:
-                
-                if q > rho:
-                    print("state",X['state'].iloc[i])
-                    if X['spread'].iloc[i] < lower_bound_2:
-                        X.loc[i, 'position_x'] = -1  # Sell asset X
-                        X.loc[i, 'position_y'] = 1   # Buy asset Y
-                    elif X['spread'].iloc[i] > upper_bound_2:
-                        X.loc[i, 'position_x'] = 1   # Buy asset X
-                        X.loc[i, 'position_y'] = -1  # Sell asset Y
-                    else:
-                        X.loc[i, 'position_x'] = 0
-                        X.loc[i, 'position_y'] = 0
+
+            elif int(X['state'].iloc[i]) == 2:
+                if X['spread'].iloc[i] < lower_bound_2 and q > rho:
+                    X.loc[i, 'position_x'] = -1  # Sell asset X
+                    X.loc[i, 'position_y'] = 1   # Buy asset Y
+                elif X['spread'].iloc[i] > upper_bound_2:
+                    X.loc[i, 'position_x'] = 1   # Buy asset X
+                    X.loc[i, 'position_y'] = -1  # Sell asset Y
                 else:
                     X.loc[i, 'position_x'] = 0
                     X.loc[i, 'position_y'] = 0
             else:
-                print("error")
-        else:
-            continue
+                print("Error: Invalid state at index", i)
+
+    print("After loop, X['timestamp'] has NaT:", X['timestamp'].isna().sum())
     return X
 
-def calculate_pnl(X,symbol1,symbol2):
+def calculate_pnl(X, symbol1, symbol2):
+    # Ensure the timestamp column is in datetime format
+    X['timestamp'] = pd.to_datetime(X['timestamp'], errors='coerce')
+    print("pnl_cal",X['timestamp'])
+
     # Initialize P&L
     X['pnl'] = 0.0
     start_time = X['timestamp'].iloc[0]
     end_time = X['timestamp'].iloc[-1]
-    print("start_time",start_time)
-    print("end_time",end_time)
+    print("start_time", start_time)
+    print("end_time", end_time)
     days = (end_time - start_time).days
+    print("days",days)
     entry_price_x = 0
     entry_price_y = 0
     PNL = 0
@@ -226,39 +216,45 @@ def calculate_pnl(X,symbol1,symbol2):
             if entry_price_x == 0:
                 entry_price_x = X['symbol1'].iloc[i]
                 entry_price_y = X['symbol2'].iloc[i]
-                
+                entry_beta = X['beta'].iloc[i]
+                print("entry_beta",entry_beta)
             else:
                 continue
         # Check for position closing
-        if X['position_x'].iloc[i] == 0 and entry_price_x !=0:
+        if X['position_x'].iloc[i] == 0 and entry_price_x != 0:
             # Calculate P&L
             amount_x = 100 / entry_price_x
-            amount_y = abs(100 * X['beta'].iloc[i] / entry_price_y)
-            notional_y = amount_y * entry_price_y
+            amount_y = abs(100 * entry_beta / entry_price_y)
+            notional_y = entry_beta * 100
+            print("notional_y",notional_y)
             notional_all = notional_y + 100
             notional += notional_all
-            print("amount_x",amount_x)
-            print("amount_y",amount_y)
-            pnl_x = amount_x * (X['symbol1'].iloc[i] - entry_price_x) * X['position_x'].iloc[i-1]
-            pnl_y = amount_y * (X['symbol2'].iloc[i] - entry_price_y) * X['position_y'].iloc[i-1]
+            print("amount_x", amount_x)
+            print("amount_y", amount_y)
+            pnl_x = amount_x * (X['symbol1'].iloc[i] - entry_price_x) * X['position_x'].iloc[i - 1]
+            pnl_y = amount_y * (X['symbol2'].iloc[i] - entry_price_y) * X['position_y'].iloc[i - 1]
             X.loc[i, 'pnl'] = pnl_x + pnl_y
             PNL += pnl_x + pnl_y
             trades += 1
-            print("pnl",X['pnl'].iloc[i])
+            print("pnl", X['pnl'].iloc[i])
             # Reset entry prices
             entry_price_y = 0
             entry_price_x = 0
-    PNL_per_trade = PNL / trades
-    return_pct = 100 * PNL / notional
-    annual_return = ((1 + PNL / notional) ** (365 / days)) - 1
+    PNL_per_trade = PNL / trades if trades > 0 else 0
+    return_pct = 100 * PNL / notional if notional > 0 else 0
+    print("notional",notional)
+    if notional != 0:
+        annual_return = ((1 + PNL / notional) ** (365 / days)) - 1 if days > 0 else 0
+    else:
+        annual_return = 0
     path = os.getcwd()
-    X.to_csv(path+f'/data/results_for_{symbol1}&{symbol2}.csv')
-    print("PNL",PNL)
-    print("trades",trades)
-    return X,notional,PNL,trades,PNL_per_trade,return_pct,days,annual_return
+    X.to_csv(path + f'/data/BTresults_for_{symbol1}&{symbol2}_v4.csv')
+    print("PNL", PNL)
+    print("trades", trades)
+    return X, notional, PNL, trades, PNL_per_trade, return_pct, days, annual_return
 import matplotlib.pyplot as plt
 
-def draw_picture(X, symbol1, symbol2, lower_mean, higher_mean, upper_bound1, lower_bound1, upper_bound2, lower_bound2):
+def draw_picture(X, symbol1, symbol2):
     # Create a figure with 4 subplots
     fig, ax1 = plt.subplots(4, 1, figsize=(12, 16))
 
@@ -291,15 +287,15 @@ def draw_picture(X, symbol1, symbol2, lower_mean, higher_mean, upper_bound1, low
     ax2.legend(loc='upper right')
     ax1[2].grid()
 
-    # Plot 4: Spread and thresholds
+    # Plot 4: Spread and thresholds dynamically
     ax1[3].plot(X['timestamp'], X['spread'], label='Spread', color='purple')
-    ax1[3].axhline(lower_mean, color='blue', linestyle='--', label='Lower Mean')
-    ax1[3].axhline(higher_mean, color='red', linestyle='--', label='Higher Mean')
-    ax1[3].axhline(upper_bound1, color='green', linestyle='-.', label='Upper Bound 1')
-    ax1[3].axhline(lower_bound1, color='orange', linestyle='-.', label='Lower Bound 1')
-    ax1[3].axhline(upper_bound2, color='cyan', linestyle=':', label='Upper Bound 2')
-    ax1[3].axhline(lower_bound2, color='magenta', linestyle=':', label='Lower Bound 2')
-    ax1[3].set_title('Spread and Thresholds')
+    ax1[3].plot(X['timestamp'], X['lower_mean'], color='blue', linestyle='--', label='Lower Mean')
+    ax1[3].plot(X['timestamp'], X['higher_mean'], color='red', linestyle='--', label='Higher Mean')
+    ax1[3].plot(X['timestamp'], X['lower_mean'] - 0.75 * X['lower_std'], color='orange', linestyle='-.', label='Lower Bound 1')
+    ax1[3].plot(X['timestamp'], X['lower_mean'] + 0.75 * X['lower_std'], color='green', linestyle='-.', label='Upper Bound 1')
+    ax1[3].plot(X['timestamp'], X['higher_mean'] - 0.75 * X['higher_std'], color='magenta', linestyle=':', label='Lower Bound 2')
+    ax1[3].plot(X['timestamp'], X['higher_mean'] + 0.75 * X['higher_std'], color='cyan', linestyle=':', label='Upper Bound 2')
+    ax1[3].set_title('Spread and Thresholds (Dynamic)')
     ax1[3].set_xlabel('Timestamp')
     ax1[3].set_ylabel('Spread')
     ax1[3].legend()
@@ -308,14 +304,13 @@ def draw_picture(X, symbol1, symbol2, lower_mean, higher_mean, upper_bound1, low
     # Adjust layout and save the plot
     plt.tight_layout()
     path = os.getcwd()
-    picture_path = path + f'/pictures_v2/{symbol1}&{symbol2}.png'
+    picture_path = path + f'/pictures_v4/{symbol1}&{symbol2}.png'
     plt.savefig(picture_path)
 
 def main():
     path = os.getcwd()
     file_sum = pd.read_csv(path + '/pair_trading_summary_all.csv')
 
-    # 初始化一个列表来存储每对 symbol 的结果
     results = []
 
     for index, row in file_sum.iterrows():
@@ -324,20 +319,42 @@ def main():
         print(f"Processing pair: {symbol1} & {symbol2}")
 
         # 生成合并数据
-        merge_data = generate_merge_data(symbol1, symbol2)
+        #merge_data = generate_merge_data(symbol1, symbol2)
         merge_data = pd.read_csv(path + f'/data/30m/{symbol1}-{symbol2}-merge.csv')
         merge_data.columns = ['uniname', 'timestamp', 'symbol1', 'symbol2', 'spread', 'beta']
+        merge_data = merge_data.drop(columns=['uniname'])
+        print("merge_col",merge_data.columns)
+        merge_data['timestamp'] = pd.to_datetime(merge_data['timestamp'])
+        start_time = merge_data['timestamp'].iloc[0]
+        start_rolling = start_time + timedelta(days = 15)
+        if 'state' not in merge_data.columns:
+            merge_data['state'] = 1  # I
+        for end in merge_data['timestamp']:
+            if end <= start_rolling:
+                continue
+            elif end > start_rolling:
+                end_rolling = end - timedelta(days=30)
+                merge_data_rolling = merge_data[(merge_data['timestamp'] > end_rolling) & (merge_data['timestamp'] < end)]
+                # Calculate lower_mean, higher_mean, lower_std, higher_std
+                lower_mean, higher_mean, lower_std, higher_std = higher_lower_mean(merge_data_rolling)
 
-        # 计算 lower_mean, higher_mean, lower_std, higher_std
-        lower_mean, higher_mean, lower_std, higher_std = higher_lower_mean(merge_data)
-        upper_bound_1 = lower_mean + 0.75 * lower_std
-        lower_bound_1 = lower_mean - 0.75 * lower_std
-        upper_bound_2 = higher_mean + 0.75 * higher_std
-        lower_bound_2 = higher_mean - 0.75 * higher_std
+                # Update the state column in merge_data_rolling
+                merge_data_rolling.loc[:, 'state'] = np.where(
+                    (merge_data_rolling['spread'] > higher_mean), 2, 1
+                )
 
-        # 生成交易信号
-        rho = 0.1
-        merge_data = generate_trading_signal_dynamic(merge_data, lower_mean, higher_mean, lower_std, higher_std, rho)
+                # Propagate changes back to merge_data
+                merge_data.loc[merge_data['timestamp'].isin(merge_data_rolling['timestamp']), 'state'] = merge_data_rolling['state']
+                # Update other columns in merge_data
+                merge_data.loc[merge_data['timestamp'] == end, 'lower_mean'] = lower_mean
+                merge_data.loc[merge_data['timestamp'] == end, 'higher_mean'] = higher_mean
+                merge_data.loc[merge_data['timestamp'] == end, 'lower_std'] = lower_std
+                merge_data.loc[merge_data['timestamp'] == end, 'higher_std'] = higher_std
+        rho = 0.01
+        merge_data = merge_data.dropna()
+        print("Before generate_trading_signal_dynamic, merge_data['timestamp']:")
+        print(merge_data['timestamp'].isna().sum())  # 检查空值数量 
+        merge_data = generate_trading_signal_dynamic(merge_data,rho)
 
         # 计算 PnL
         pnl_data, notional1, PNL1, trades1, PNL_per_trade1, return_pct1 ,days,AR= calculate_pnl(merge_data,symbol1,symbol2)
@@ -355,15 +372,14 @@ def main():
             'annual_return':AR
         })
 
-        # 绘制图表
-        draw_picture(pnl_data, symbol1, symbol2, lower_mean, higher_mean, upper_bound_1, lower_bound_1, upper_bound_2, lower_bound_2)
+        draw_picture(pnl_data, symbol1, symbol2)
         print(f"Finished processing pair: {symbol1} & {symbol2}\n")
 
     # 将结果转换为 DataFrame
     results_df = pd.DataFrame(results)
 
     # 保存结果到 CSV 文件
-    results_df.to_csv(path + '/pair_trading_results_summary_MK.csv', index=False)
-    print("All results saved to pair_trading_results_summary_MK.csv")
+    results_df.to_csv(path + '/pair_trading_results_summary_MK_v4.csv', index=False)
+    print("All results saved to pair_trading_results_summary_MK_v4.csv")
 
 main()
